@@ -202,9 +202,6 @@ export const HOTEL_BED_TYPE_OPTIONS = [
   { value: "king-bed", label: "King Bed" },
   { value: "queen-bed", label: "Queen Bed" },
   { value: "twin-beds", label: "Twin Beds" },
-  { value: "double-bed", label: "Double Bed" },
-  { value: "single-bed", label: "Single Bed" },
-  { value: "extra-bed-rollaway-bed", label: "Extra Bed / Rollaway Bed" },
 ];
 
 export const HOTEL_ROOM_TYPE_FIXED_PRICES = Object.freeze({

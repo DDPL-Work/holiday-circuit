@@ -19,6 +19,7 @@ import {
   detectScheduleConflicts,
   getDayLoadSummary,
   checkSlotAvailability,
+  formatServiceDuration,
 } from "./createPackage/utils/packageUtils.js";
 
 import { useDmcServices } from "./createPackage/hooks/useDmcServices.js";
@@ -474,6 +475,12 @@ export default function CreatePreDefinedPackageModal({
 
     hotelItem.roomType = roomTypeName;
 
+    if (!roomTypeName) {
+      hotelItem.price = recalculateHotelPrice(hotelItem);
+      setHotels(updated);
+      return;
+    }
+
     if (!isTripleAllowedCategory(roomTypeName) && String(hotelItem.roomCategory || "").toLowerCase() === "triple") {
       hotelItem.roomCategory = "Double";
       hotelItem.maxAdults = 2;
@@ -508,6 +515,12 @@ export default function CreatePreDefinedPackageModal({
       hotelItem.roomCategory = "Triple";
     } else {
       hotelItem.roomCategory = occupancyCategory;
+    }
+
+    if (!occupancyCategory) {
+      hotelItem.price = recalculateHotelPrice(hotelItem);
+      setHotels(updated);
+      return;
     }
 
     const hotelsList = hotelItem.hotelsList || [];
@@ -695,6 +708,12 @@ export default function CreatePreDefinedPackageModal({
     const updated = [...transfers];
     const item = updated[transferIdx];
     item.usage = usageKey;
+    if (!usageKey) {
+      item.basePrice = 0;
+      item.price = 0;
+      setTransfers(updated);
+      return;
+    }
     const usagePrices = item.usagePrices || {};
     const rate = usagePrices[usageKey] !== undefined ? Number(usagePrices[usageKey]) : Number(item.basePrice || 0);
     item.basePrice = rate;
@@ -753,7 +772,19 @@ export default function CreatePreDefinedPackageModal({
   };
 
   // Add & Update Handlers for Activities
-  const addActivity = () => setActivities([...activities, initialActivity()]);
+  const addActivity = () => {
+    const defaultAdults = Number(orderData?.numberOfAdults || 2);
+    const defaultChildren = Number(orderData?.numberOfChildren || 0);
+    setActivities([
+      ...activities,
+      {
+        ...initialActivity(),
+        adults: defaultAdults,
+        children: defaultChildren,
+        pax: defaultAdults + defaultChildren,
+      },
+    ]);
+  };
   const removeActivity = (index) => setActivities(activities.filter((_, i) => i !== index));
 
   const handleActivityTourTypeChange = (index, selectedTourType) => {
@@ -764,8 +795,8 @@ export default function CreatePreDefinedPackageModal({
 
     const adultRate = Number(matched.adultPrice !== undefined ? matched.adultPrice : (matched.price !== undefined ? matched.price : (item.adultPrice || 0)));
     const childRate = Number(matched.childPrice !== undefined ? matched.childPrice : (matched.childRate !== undefined ? matched.childRate : (item.childPrice || 0)));
-    const adultsNum = Math.max(1, Number(item.adults !== undefined ? item.adults : (item.pax || 2)));
-    const childrenNum = Math.max(0, Number(item.children || 0));
+    const adultsNum = Math.max(1, Number(item.adults !== undefined ? item.adults : (orderData?.numberOfAdults || 2)));
+    const childrenNum = Math.max(0, Number(item.children !== undefined ? item.children : (orderData?.numberOfChildren || 0)));
 
     item.tourType = selectedTourType;
     if (selectedTourType) {
@@ -793,6 +824,8 @@ export default function CreatePreDefinedPackageModal({
           updated[index] = {
             ...initialActivity(),
             day: updated[index].day || 1,
+            adults: Number(orderData?.numberOfAdults || 2),
+            children: Number(orderData?.numberOfChildren || 0),
           };
           setActivities(updated);
           return;
@@ -803,18 +836,23 @@ export default function CreatePreDefinedPackageModal({
     }
 
     if (field === "adults" || field === "children" || field === "adultPrice" || field === "childPrice") {
-      const aCount = Math.max(1, Number(field === "adults" ? value : (updated[index].adults !== undefined ? updated[index].adults : 1)));
-      const cCount = Math.max(0, Number(field === "children" ? value : (updated[index].children !== undefined ? updated[index].children : 0)));
-      const aRate = Number(field === "adultPrice" ? value : (updated[index].adultPrice !== undefined ? updated[index].adultPrice : 0));
-      const cRate = Number(field === "childPrice" ? value : (updated[index].childPrice !== undefined ? updated[index].childPrice : 0));
+      const aCount = field === "adults" ? (value === "" ? "" : Math.max(1, Number(value))) : (updated[index].adults !== undefined ? updated[index].adults : Number(orderData?.numberOfAdults || 1));
+      const cCount = field === "children" ? (value === "" ? "" : Math.max(0, Number(value))) : (updated[index].children !== undefined ? updated[index].children : Number(orderData?.numberOfChildren || 0));
+      const aRate = field === "adultPrice" ? (value === "" ? "" : Number(value)) : (updated[index].adultPrice !== undefined ? updated[index].adultPrice : 0);
+      const cRate = field === "childPrice" ? (value === "" ? "" : Number(value)) : (updated[index].childPrice !== undefined ? updated[index].childPrice : 0);
       
+      const numAdults = Number(aCount || 0);
+      const numChildren = Number(cCount || 0);
+      const numAdultRate = Number(aRate || 0);
+      const numChildRate = Number(cRate || 0);
+
       updated[index].adults = aCount;
       updated[index].children = cCount;
-      updated[index].pax = aCount + cCount;
+      updated[index].pax = numAdults + numChildren;
       updated[index].adultPrice = aRate;
       updated[index].childPrice = cRate;
-      updated[index].basePrice = aRate;
-      updated[index].price = (aRate * aCount) + (cRate * cCount);
+      updated[index].basePrice = numAdultRate;
+      updated[index].price = (numAdultRate * numAdults) + (numChildRate * numChildren);
     }
 
     if (field === "selectedSlot") {
@@ -852,6 +890,8 @@ export default function CreatePreDefinedPackageModal({
       updated[index] = {
         ...initialActivity(),
         day: updated[index].day || 1,
+        adults: Number(orderData?.numberOfAdults || 2),
+        children: Number(orderData?.numberOfChildren || 0),
       };
       setActivities(updated);
       setActiveActivityDropdownIdx(null);
@@ -907,8 +947,8 @@ export default function CreatePreDefinedPackageModal({
         : 0
     );
     
-    const adultsNum = Math.max(1, Number(updated[index].adults || 2));
-    const childrenNum = Math.max(0, Number(updated[index].children || 0));
+    const adultsNum = Math.max(1, Number(updated[index].adults !== undefined ? updated[index].adults : (orderData?.numberOfAdults || 2)));
+    const childrenNum = Math.max(0, Number(updated[index].children !== undefined ? updated[index].children : (orderData?.numberOfChildren || 0)));
     const calculatedTotal = (adultRate * adultsNum) + (childRate * childrenNum);
 
     const availableSlots = resolveSlotOptions(dmcAct);
@@ -932,7 +972,7 @@ export default function CreatePreDefinedPackageModal({
       operatingDays: dmcAct.operatingDays || dmcAct.days || "Mon-Sun",
       openingTime: dmcAct.openingTime || "08:00",
       closingTime: dmcAct.closingTime || "18:00",
-      duration: dmcAct.duration || "120 Mins",
+      duration: formatServiceDuration(dmcAct) || dmcAct.duration || updated[index].duration || "",
       slots: dmcAct.slots || "",
       price: calculatedTotal,
       supplier: dmcAct.supplier || dmcAct.supplierId || dmcAct.dmcId || dmcAct._id || "",
@@ -945,7 +985,19 @@ export default function CreatePreDefinedPackageModal({
   };
 
   // Add & Update Handlers for Sightseeing
-  const addSightseeing = () => setSightseeing([...sightseeing, initialSightseeing()]);
+  const addSightseeing = () => {
+    const defaultAdults = Number(orderData?.numberOfAdults || 2);
+    const defaultChildren = Number(orderData?.numberOfChildren || 0);
+    setSightseeing([
+      ...sightseeing,
+      {
+        ...initialSightseeing(),
+        adults: defaultAdults,
+        children: defaultChildren,
+        pax: defaultAdults + defaultChildren,
+      },
+    ]);
+  };
   const removeSightseeing = (index) => setSightseeing(sightseeing.filter((_, i) => i !== index));
 
   const handleSightseeingTourTypeChange = (index, selectedTourType) => {
@@ -956,8 +1008,8 @@ export default function CreatePreDefinedPackageModal({
 
     const adultRate = Number(matched.adultPrice !== undefined ? matched.adultPrice : (matched.price !== undefined ? matched.price : (item.adultPrice || 0)));
     const childRate = Number(matched.childPrice !== undefined ? matched.childPrice : (matched.childRate !== undefined ? matched.childRate : (item.childPrice || 0)));
-    const adultsNum = Math.max(1, Number(item.adults !== undefined ? item.adults : (item.pax || 2)));
-    const childrenNum = Math.max(0, Number(item.children || 0));
+    const adultsNum = Math.max(1, Number(item.adults !== undefined ? item.adults : (orderData?.numberOfAdults || 2)));
+    const childrenNum = Math.max(0, Number(item.children !== undefined ? item.children : (orderData?.numberOfChildren || 0)));
 
     item.tourType = selectedTourType;
     if (selectedTourType) {
@@ -985,6 +1037,8 @@ export default function CreatePreDefinedPackageModal({
           updated[index] = {
             ...initialSightseeing(),
             day: updated[index].day || 1,
+            adults: Number(orderData?.numberOfAdults || 2),
+            children: Number(orderData?.numberOfChildren || 0),
           };
           setSightseeing(updated);
           return;
@@ -995,18 +1049,23 @@ export default function CreatePreDefinedPackageModal({
     }
 
     if (field === "adults" || field === "children" || field === "adultPrice" || field === "childPrice") {
-      const aCount = Math.max(1, Number(field === "adults" ? value : (updated[index].adults !== undefined ? updated[index].adults : 1)));
-      const cCount = Math.max(0, Number(field === "children" ? value : (updated[index].children !== undefined ? updated[index].children : 0)));
-      const aRate = Number(field === "adultPrice" ? value : (updated[index].adultPrice !== undefined ? updated[index].adultPrice : 0));
-      const cRate = Number(field === "childPrice" ? value : (updated[index].childPrice !== undefined ? updated[index].childPrice : 0));
+      const aCount = field === "adults" ? (value === "" ? "" : Math.max(1, Number(value))) : (updated[index].adults !== undefined ? updated[index].adults : Number(orderData?.numberOfAdults || 1));
+      const cCount = field === "children" ? (value === "" ? "" : Math.max(0, Number(value))) : (updated[index].children !== undefined ? updated[index].children : Number(orderData?.numberOfChildren || 0));
+      const aRate = field === "adultPrice" ? (value === "" ? "" : Number(value)) : (updated[index].adultPrice !== undefined ? updated[index].adultPrice : 0);
+      const cRate = field === "childPrice" ? (value === "" ? "" : Number(value)) : (updated[index].childPrice !== undefined ? updated[index].childPrice : 0);
       
+      const numAdults = Number(aCount || 0);
+      const numChildren = Number(cCount || 0);
+      const numAdultRate = Number(aRate || 0);
+      const numChildRate = Number(cRate || 0);
+
       updated[index].adults = aCount;
       updated[index].children = cCount;
-      updated[index].pax = aCount + cCount;
+      updated[index].pax = numAdults + numChildren;
       updated[index].adultPrice = aRate;
       updated[index].childPrice = cRate;
-      updated[index].basePrice = aRate;
-      updated[index].price = (aRate * aCount) + (cRate * cCount);
+      updated[index].basePrice = numAdultRate;
+      updated[index].price = (numAdultRate * numAdults) + (numChildRate * numChildren);
     }
 
     if (field === "selectedSlot") {
@@ -1044,6 +1103,8 @@ export default function CreatePreDefinedPackageModal({
       updated[index] = {
         ...initialSightseeing(),
         day: updated[index].day || 1,
+        adults: Number(orderData?.numberOfAdults || 2),
+        children: Number(orderData?.numberOfChildren || 0),
       };
       setSightseeing(updated);
       setActiveSightseeingDropdownIdx(null);
@@ -1099,8 +1160,8 @@ export default function CreatePreDefinedPackageModal({
         : 0
     );
     
-    const adultsNum = Math.max(1, Number(updated[index].adults || 2));
-    const childrenNum = Math.max(0, Number(updated[index].children || 0));
+    const adultsNum = Math.max(1, Number(updated[index].adults !== undefined ? updated[index].adults : (orderData?.numberOfAdults || 2)));
+    const childrenNum = Math.max(0, Number(updated[index].children !== undefined ? updated[index].children : (orderData?.numberOfChildren || 0)));
     const calculatedTotal = (adultRate * adultsNum) + (childRate * childrenNum);
 
     const availableSlots = resolveSlotOptions(dmcSight);
@@ -1124,7 +1185,7 @@ export default function CreatePreDefinedPackageModal({
       operatingDays: dmcSight.operatingDays || dmcSight.days || "Mon-Sun",
       openingTime: dmcSight.openingTime || "08:00",
       closingTime: dmcSight.closingTime || "18:00",
-      duration: dmcSight.duration || "60 Mins",
+      duration: formatServiceDuration(dmcSight) || dmcSight.duration || updated[index].duration || "",
       slots: dmcSight.slots || "",
       price: calculatedTotal,
       supplier: dmcSight.supplier || dmcSight.supplierId || dmcSight.dmcId || dmcSight._id || "",

@@ -1,7 +1,76 @@
-import React from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Landmark, Plus, Trash2, ChevronDown, MapPin, AlertTriangle, Clock, Zap } from "lucide-react";
 import { formatLocationWithDestination, resolveSlotOptions, formatServiceDuration } from "../utils/packageUtils.js";
 import { DayScheduleVisualizer } from "../components/DayScheduleVisualizer.jsx";
+
+const EditableSlotTimeDropdown = ({
+  value,
+  onChange,
+  availableSlots = [],
+  className = "",
+  placeholder = "Select Slot",
+}) => {
+  const defaultSlots =
+    Array.isArray(availableSlots) && availableSlots.length > 0
+      ? availableSlots
+      : [
+          "08:00",
+          "09:00",
+          "10:00",
+          "11:00",
+          "12:00",
+          "13:00",
+          "14:00",
+          "15:00",
+          "16:00",
+          "17:00",
+          "18:00",
+        ];
+
+  const currentValue =
+    value !== undefined && value !== null ? String(value) : "";
+
+  return (
+    <div className="relative flex items-center w-full">
+      <input
+        type="text"
+        value={currentValue}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className={`${className} pr-7 font-normal text-slate-800 focus:outline-none`}
+      />
+      <div className="absolute right-0 top-0 bottom-0 w-7 flex items-center justify-center">
+        <select
+          value=""
+          onChange={(e) => {
+            if (e.target.value) {
+              onChange(e.target.value);
+            }
+          }}
+          title="Choose time slot"
+          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer text-xs font-normal bg-white"
+        >
+          <option value="" disabled>
+            Select Time
+          </option>
+          {defaultSlots.map((slot, idx) => (
+            <option
+              key={idx}
+              value={slot}
+              className="bg-white text-slate-900 font-normal"
+            >
+              {slot}
+            </option>
+          ))}
+        </select>
+        <ChevronDown
+          size={13}
+          className="text-slate-500 pointer-events-none"
+        />
+      </div>
+    </div>
+  );
+};
 
 export const ActivitiesTab = ({
   activities,
@@ -91,7 +160,6 @@ export const ActivitiesTab = ({
             const cardConflicts = getServiceConflicts("activity", index);
             const slotOptions = resolveSlotOptions(act);
             const currentDayNum = Number(act.day || 1);
-            const actDurMins = 120;
 
             return (
               <div
@@ -172,7 +240,7 @@ export const ActivitiesTab = ({
                 </div>
 
                 <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-12">
-                  <div className={`sm:col-span-6 relative dmc-autocomplete-container ${activeActivityDropdownIdx === index ? "z-40" : "z-10"}`}>
+                  <div className={`sm:col-span-5 relative dmc-autocomplete-container ${activeActivityDropdownIdx === index ? "z-40" : "z-10"}`}>
                     <label className="block text-[11px] font-semibold text-slate-600 mb-1 flex items-center justify-between">
                       <span>Activity Name (Select Activity or Type)</span>
                       {servicesLoading ? (
@@ -205,7 +273,7 @@ export const ActivitiesTab = ({
                     </div>
 
                     {activeActivityDropdownIdx === index && (
-                      <div className="absolute left-0 right-0 top-full mt-1.5 max-h-64 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-xl z-[100] divide-y divide-gray-100 [scrollbar-width:thin]">
+                      <div className="absolute left-0 w-[420px] sm:w-[500px] md:w-[580px] max-w-[calc(90vw-30px)] top-full mt-1.5 max-h-72 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-2xl z-[100] divide-y divide-gray-100 [scrollbar-width:thin]">
                         {filteredActivities.length === 0 ? (
                           <div className="p-3 text-[11px] text-gray-500 italic text-center">
                             No activity found matching "{act.name}". You can freely type custom activity.
@@ -239,7 +307,7 @@ export const ActivitiesTab = ({
                                       <MapPin size={11} className="text-rose-500 shrink-0" />
                                       {formatLocationWithDestination(dmcAct.city, dmcAct.destination, destination)}
                                     </span>
-                                    • Tour: <span className="text-slate-700 font-medium">{dmcAct.tourType || "Sharing Tour"}</span> • Duration: {dmcAct.duration || "120 Mins"}
+                                    • Tour: <span className="text-slate-700 font-medium">{dmcAct.tourType || "Sharing Tour"}</span>{dmcAct.duration ? ` • Duration: ${dmcAct.duration}` : ""}
                                   </p>
                                   <p className="text-[10px] text-emerald-600 font-semibold mt-0.5">
                                     Supplier: {dmcAct.supplierName || dmcAct.dmcName || "Contracted Supplier"}
@@ -247,9 +315,14 @@ export const ActivitiesTab = ({
                                 </div>
                                 <div className="text-right shrink-0">
                                   <span className="text-xs font-bold text-slate-900">
-                                    ₹{Number(dmcAct.price || dmcAct.rate || 0).toLocaleString("en-IN")}
+                                    ₹{Number(dmcAct.adultPrice !== undefined ? dmcAct.adultPrice : (dmcAct.price || dmcAct.rate || 0)).toLocaleString("en-IN")}
                                   </span>
-                                  <span className="block text-[10px] text-gray-500">/ person</span>
+                                  <span className="block text-[10px] text-gray-500">/ adult</span>
+                                  {Number(dmcAct.childPrice || 0) > 0 && (
+                                    <span className="block text-[9px] text-gray-400">
+                                      Child: ₹{Number(dmcAct.childPrice).toLocaleString("en-IN")}
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                             );
@@ -274,7 +347,7 @@ export const ActivitiesTab = ({
                     </select>
                   </div>
 
-                  <div className="sm:col-span-4">
+                  <div className="sm:col-span-3">
                     <label className="block text-[11px] font-semibold text-slate-600 mb-1">Tour Type</label>
                     <select
                       value={act.tourType || ""}
@@ -287,25 +360,49 @@ export const ActivitiesTab = ({
                       <option value="Ticket Tour">Ticket Tour</option>
                     </select>
                   </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1 flex items-center justify-between">
+                      <span>Duration</span>
+                      {act.duration && (
+                        <span className="text-[10px] text-sky-600 font-medium truncate ml-1">
+                          {formatServiceDuration(act)}
+                        </span>
+                      )}
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 230 Mins (3h 50m)"
+                      value={act.duration || ""}
+                      onChange={(e) => updateActivity(index, "duration", e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
+                    />
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-5">
-                  <div className="sm:col-span-2">
-                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">Time Slot</label>
-                    <select
-                      value={act.selectedSlot || act.time || "08:00"}
-                      onChange={(e) => updateActivity(index, "selectedSlot", e.target.value)}
-                      className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs cursor-pointer"
-                    >
-                      {slotOptions.map((slot) => {
-                        const check = checkSlotAvailability("activity", index, slot, currentDayNum, actDurMins, allScheduledItems);
-                        return (
-                          <option key={slot} value={slot}>
-                            {slot} {check.isConflicting ? `⚠️ (Clashes with ${check.conflictingWith})` : ""}
-                          </option>
-                        );
-                      })}
-                    </select>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">Adult Price (₹)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="e.g. 1000"
+                      value={act.adultPrice !== undefined && act.adultPrice !== null ? act.adultPrice : ""}
+                      onChange={(e) => updateActivity(index, "adultPrice", e.target.value === "" ? "" : Number(e.target.value))}
+                      className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">Child Price (₹)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="e.g. 500"
+                      value={act.childPrice !== undefined && act.childPrice !== null ? act.childPrice : ""}
+                      onChange={(e) => updateActivity(index, "childPrice", e.target.value === "" ? "" : Number(e.target.value))}
+                      className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
+                    />
                   </div>
 
                   <div>
@@ -315,7 +412,7 @@ export const ActivitiesTab = ({
                       min="1"
                       value={act.adults !== undefined ? act.adults : 2}
                       onChange={(e) => updateActivity(index, "adults", Number(e.target.value))}
-                      className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
+                      className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
                     />
                   </div>
 
@@ -326,20 +423,29 @@ export const ActivitiesTab = ({
                       min="0"
                       value={act.children !== undefined ? act.children : 0}
                       onChange={(e) => updateActivity(index, "children", Number(e.target.value))}
-                      className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
+                      className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">Time Slot</label>
+                    <EditableSlotTimeDropdown
+                      value={act.selectedSlot !== undefined ? act.selectedSlot : (act.time || "")}
+                      onChange={(val) => {
+                        updateActivity(index, "selectedSlot", val);
+                        updateActivity(index, "time", val);
+                      }}
+                      availableSlots={slotOptions}
+                      className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-2xs"
+                      placeholder="Select Slot"
                     />
                   </div>
 
                   <div>
                     <label className="block text-[11px] font-semibold text-slate-600 mb-1">Total Cost (₹)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="e.g. 3500"
-                      value={act.price || ""}
-                      onChange={(e) => updateActivity(index, "price", Number(e.target.value))}
-                      className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
-                    />
+                    <div className="flex h-[31px] w-full items-center rounded-lg border border-gray-300 bg-slate-100 px-2.5 text-xs font-bold text-slate-900 shadow-2xs truncate">
+                      ₹ {((Number(act.adultPrice || 0) * Math.max(1, Number(act.adults !== undefined ? act.adults : 1))) + (Number(act.childPrice || 0) * Math.max(0, Number(act.children || 0))) || Number(act.price || 0)).toLocaleString("en-IN")}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -375,7 +481,6 @@ export const ActivitiesTab = ({
             const cardConflicts = getServiceConflicts("sightseeing", index);
             const slotOptions = resolveSlotOptions(sight);
             const currentDayNum = Number(sight.day || 1);
-            const sightDurMins = 60;
 
             return (
               <div
@@ -456,7 +561,7 @@ export const ActivitiesTab = ({
                 </div>
 
                 <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-12">
-                  <div className={`sm:col-span-6 relative dmc-autocomplete-container ${activeSightseeingDropdownIdx === index ? "z-40" : "z-10"}`}>
+                  <div className={`sm:col-span-5 relative dmc-autocomplete-container ${activeSightseeingDropdownIdx === index ? "z-40" : "z-10"}`}>
                     <label className="block text-[11px] font-semibold text-slate-600 mb-1 flex items-center justify-between">
                       <span>Sightseeing Name (Select Tour or Type)</span>
                       {servicesLoading ? (
@@ -489,7 +594,7 @@ export const ActivitiesTab = ({
                     </div>
 
                     {activeSightseeingDropdownIdx === index && (
-                      <div className="absolute left-0 right-0 top-full mt-1.5 max-h-64 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-xl z-[100] divide-y divide-gray-100 [scrollbar-width:thin]">
+                      <div className="absolute left-0 w-[420px] sm:w-[500px] md:w-[580px] max-w-[calc(90vw-30px)] top-full mt-1.5 max-h-72 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-2xl z-[100] divide-y divide-gray-100 [scrollbar-width:thin]">
                         {filteredSightseeing.length === 0 ? (
                           <div className="p-3 text-[11px] text-gray-500 italic text-center">
                             No sightseeing found matching "{sight.name}". You can freely type custom tour.
@@ -523,7 +628,7 @@ export const ActivitiesTab = ({
                                       <MapPin size={11} className="text-rose-500 shrink-0" />
                                       {formatLocationWithDestination(dmcSight.city, dmcSight.destination, destination)}
                                     </span>
-                                    • Tour: <span className="text-slate-700 font-medium">{dmcSight.tourType || "Sharing Tour"}</span> • Duration: {dmcSight.duration || "60 Mins"}
+                                    • Tour: <span className="text-slate-700 font-medium">{dmcSight.tourType || "Sharing Tour"}</span>{dmcSight.duration ? ` • Duration: ${dmcSight.duration}` : ""}
                                   </p>
                                   <p className="text-[10px] text-emerald-600 font-semibold mt-0.5">
                                     Supplier: {dmcSight.supplierName || dmcSight.dmcName || "Contracted Supplier"}
@@ -531,9 +636,14 @@ export const ActivitiesTab = ({
                                 </div>
                                 <div className="text-right shrink-0">
                                   <span className="text-xs font-bold text-slate-900">
-                                    ₹{Number(dmcSight.price || dmcSight.rate || 0).toLocaleString("en-IN")}
+                                    ₹{Number(dmcSight.adultPrice !== undefined ? dmcSight.adultPrice : (dmcSight.price || dmcSight.rate || 0)).toLocaleString("en-IN")}
                                   </span>
-                                  <span className="block text-[10px] text-gray-500">/ person</span>
+                                  <span className="block text-[10px] text-gray-500">/ adult</span>
+                                  {Number(dmcSight.childPrice || 0) > 0 && (
+                                    <span className="block text-[9px] text-gray-400">
+                                      Child: ₹{Number(dmcSight.childPrice).toLocaleString("en-IN")}
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                             );
@@ -558,7 +668,7 @@ export const ActivitiesTab = ({
                     </select>
                   </div>
 
-                  <div className="sm:col-span-4">
+                  <div className="sm:col-span-3">
                     <label className="block text-[11px] font-semibold text-slate-600 mb-1">Tour Type</label>
                     <select
                       value={sight.tourType || ""}
@@ -571,25 +681,49 @@ export const ActivitiesTab = ({
                       <option value="Ticket Tour">Ticket Tour</option>
                     </select>
                   </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1 flex items-center justify-between">
+                      <span>Duration</span>
+                      {sight.duration && (
+                        <span className="text-[10px] text-sky-600 font-medium truncate ml-1">
+                          {formatServiceDuration(sight)}
+                        </span>
+                      )}
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 230 Mins (3h 50m)"
+                      value={sight.duration || ""}
+                      onChange={(e) => updateSightseeing(index, "duration", e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
+                    />
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-5">
-                  <div className="sm:col-span-2">
-                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">Time Slot</label>
-                    <select
-                      value={sight.selectedSlot || sight.time || "08:00"}
-                      onChange={(e) => updateSightseeing(index, "selectedSlot", e.target.value)}
-                      className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs cursor-pointer"
-                    >
-                      {slotOptions.map((slot) => {
-                        const check = checkSlotAvailability("sightseeing", index, slot, currentDayNum, sightDurMins, allScheduledItems);
-                        return (
-                          <option key={slot} value={slot}>
-                            {slot} {check.isConflicting ? `⚠️ (Clashes with ${check.conflictingWith})` : ""}
-                          </option>
-                        );
-                      })}
-                    </select>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">Adult Price (₹)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="e.g. 1000"
+                      value={sight.adultPrice !== undefined && sight.adultPrice !== null ? sight.adultPrice : ""}
+                      onChange={(e) => updateSightseeing(index, "adultPrice", e.target.value === "" ? "" : Number(e.target.value))}
+                      className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">Child Price (₹)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="e.g. 500"
+                      value={sight.childPrice !== undefined && sight.childPrice !== null ? sight.childPrice : ""}
+                      onChange={(e) => updateSightseeing(index, "childPrice", e.target.value === "" ? "" : Number(e.target.value))}
+                      className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
+                    />
                   </div>
 
                   <div>
@@ -599,7 +733,7 @@ export const ActivitiesTab = ({
                       min="1"
                       value={sight.adults !== undefined ? sight.adults : 2}
                       onChange={(e) => updateSightseeing(index, "adults", Number(e.target.value))}
-                      className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
+                      className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
                     />
                   </div>
 
@@ -610,20 +744,29 @@ export const ActivitiesTab = ({
                       min="0"
                       value={sight.children !== undefined ? sight.children : 0}
                       onChange={(e) => updateSightseeing(index, "children", Number(e.target.value))}
-                      className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
+                      className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">Time Slot</label>
+                    <EditableSlotTimeDropdown
+                      value={sight.selectedSlot !== undefined ? sight.selectedSlot : (sight.time || "")}
+                      onChange={(val) => {
+                        updateSightseeing(index, "selectedSlot", val);
+                        updateSightseeing(index, "time", val);
+                      }}
+                      availableSlots={slotOptions}
+                      className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-2xs"
+                      placeholder="Select Slot"
                     />
                   </div>
 
                   <div>
                     <label className="block text-[11px] font-semibold text-slate-600 mb-1">Total Cost (₹)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="e.g. 1800"
-                      value={sight.price || ""}
-                      onChange={(e) => updateSightseeing(index, "price", Number(e.target.value))}
-                      className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
-                    />
+                    <div className="flex h-[31px] w-full items-center rounded-lg border border-gray-300 bg-slate-100 px-2.5 text-xs font-bold text-slate-900 shadow-2xs truncate">
+                      ₹ {((Number(sight.adultPrice || 0) * Math.max(1, Number(sight.adults !== undefined ? sight.adults : 1))) + (Number(sight.childPrice || 0) * Math.max(0, Number(sight.children || 0))) || Number(sight.price || 0)).toLocaleString("en-IN")}
+                    </div>
                   </div>
                 </div>
               </div>

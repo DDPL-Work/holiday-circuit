@@ -282,10 +282,10 @@ const getQueryPassengerCount = (query = {}) =>
 Number(query?.numberOfAdults || 0) + Number(query?.numberOfChildren || 0);
 
 const formatServiceDuration = (serv = {}, tourObj = {}) => {
-  let dur = serv.duration || tourObj.duration || "";
+  let dur = serv.duration || tourObj?.duration || "";
 
   if (!dur) {
-    const descText = `${tourObj.description || ""} ${serv.description || ""} ${serv.desc || ""}`;
+    const descText = `${tourObj?.description || ""} ${serv.description || ""} ${serv.desc || ""}`;
     const minMatch = descText.match(/(\d+)\s*(?:mins?|minutes?)/i);
     const hrMatch = descText.match(/(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)/i);
     if (minMatch) {
@@ -295,11 +295,22 @@ const formatServiceDuration = (serv = {}, tourObj = {}) => {
     }
   }
 
-  if (!dur) dur = "60";
+  if (!dur) return "";
 
   const num = Number(String(dur).replace(/[^\d.]/g, ""));
   if (!isNaN(num) && num > 0) {
-    return `${num} Mins`;
+    const totalMins = num;
+    const hrs = totalMins / 60;
+    if (hrs >= 1) {
+      if (Number.isInteger(hrs)) {
+        return `${totalMins} Mins (${hrs} ${hrs === 1 ? "Hour" : "Hours"})`;
+      } else {
+        const hPart = Math.floor(hrs);
+        const mPart = totalMins % 60;
+        return `${totalMins} Mins (${hPart}h ${mPart}m)`;
+      }
+    }
+    return `${totalMins} Mins`;
   }
 
   return String(dur);
@@ -1261,9 +1272,6 @@ const buildWhatsAppTermsSection = (items = []) => {
   { value: "king-bed", label: "King Bed" },
   { value: "queen-bed", label: "Queen Bed" },
   { value: "twin-beds", label: "Twin Beds" },
-  { value: "double-bed", label: "Double Bed" },
-  { value: "single-bed", label: "Single Bed" },
-  { value: "extra-bed-rollaway-bed", label: "Extra Bed / Rollaway Bed" },
   ];
 
   const HOTEL_ROOM_TYPE_FIXED_PRICES = Object.freeze({
@@ -6987,10 +6995,10 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                   />
                 )}
 
-                {(service.pickupTime || service.time) && (
+                {(service.pickupTime || service.time || service.selectedSlot) && (
                   <Chip
                     icon={<Clock size={10} />}
-                    value={`Pickup: ${service.pickupTime || service.time}`}
+                    value={`${service.type === "transfer" || service.type === "car" ? "Pickup" : "Slot"}: ${service.selectedSlot || service.time || service.pickupTime}`}
                     accent="text-amber-800"
                     iconColor="text-amber-600"
                   />
@@ -7186,7 +7194,143 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                   )}
                 </div>
               )}
-            </div>
+                {/* Configuration Editor Grid inside Modal */}
+                {(service.type === "sightseeing" || service.type === "activity") && (() => {
+                  const availableSlots = typeof resolveSlotOptions === "function" ? resolveSlotOptions(service) : ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00"];
+                  const servCurrency = typeof normalizeCurrencyCode === "function" ? normalizeCurrencyCode(service.currency || "INR") : (service.currency || "INR");
+
+                  return (
+                    <div className="mt-3.5 pt-3.5 border-t border-gray-200/80 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">
+                          Edit Service Details
+                        </p>
+                        {service.tourType && (
+                          <span className="text-[11px] font-semibold text-sky-700 bg-sky-50 border border-sky-200 px-2.5 py-0.5 rounded-md">
+                            {service.tourType}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Main Calculation Grid */}
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+                        <div>
+                          <label className="block text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">
+                            Adult Price
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={service.adultPrice !== undefined ? service.adultPrice : (service.rate || 0)}
+                            onChange={(e) => {
+                              const val = Number(e.target.value);
+                              updateField(service.id, "adultPrice", val);
+                              updateField(service.id, "rate", val);
+                            }}
+                            className="w-full bg-white border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 shadow-2xs"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">
+                            Child Price
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={service.childPrice !== undefined ? service.childPrice : 0}
+                            onChange={(e) => updateField(service.id, "childPrice", Number(e.target.value))}
+                            className="w-full bg-white border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 shadow-2xs"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">
+                            Adults
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            value={service.adults !== undefined ? service.adults : (service.pax || 1)}
+                            onChange={(e) => {
+                              const num = Math.max(1, Number(e.target.value) || 1);
+                              updateField(service.id, "adults", num);
+                              updateField(service.id, "pax", num + Number(service.children || 0));
+                            }}
+                            className="w-full bg-white border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 shadow-2xs"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">
+                            Children
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={service.children !== undefined ? service.children : 0}
+                            onChange={(e) => {
+                              const num = Math.max(0, Number(e.target.value) || 0);
+                              updateField(service.id, "children", num);
+                              updateField(service.id, "pax", Number(service.adults || service.pax || 1) + num);
+                            }}
+                            className="w-full bg-white border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 shadow-2xs"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">
+                            Slot / Time
+                          </label>
+                          <div className="relative flex items-center">
+                            <input
+                              type="text"
+                              value={service.selectedSlot !== undefined ? service.selectedSlot : (service.time || "08:00")}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                updateField(service.id, "selectedSlot", val);
+                                updateField(service.id, "time", val);
+                              }}
+                              placeholder="08:00"
+                              className="w-full bg-white border border-gray-300 rounded-lg px-2.5 py-1.5 pr-7 text-xs font-normal text-slate-800 outline-none focus:border-blue-500 shadow-2xs"
+                            />
+                            <div className="absolute right-0 top-0 bottom-0 w-7 flex items-center justify-center">
+                              <select
+                                value=""
+                                onChange={(e) => {
+                                  if (e.target.value) {
+                                    updateField(service.id, "selectedSlot", e.target.value);
+                                    updateField(service.id, "time", e.target.value);
+                                  }
+                                }}
+                                title="Choose time slot"
+                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer text-xs font-normal bg-white"
+                              >
+                                <option value="" disabled>Select Time</option>
+                                {availableSlots.map((slot, sIdx) => (
+                                  <option key={sIdx} value={slot} className="bg-white text-slate-900 font-normal">
+                                    {slot}
+                                  </option>
+                                ))}
+                              </select>
+                              <ChevronDown size={12} className="text-slate-500 pointer-events-none" />
+                            </div>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">
+                            Total
+                          </label>
+                          <div className="flex h-[31px] w-full items-center rounded-lg border border-gray-200 bg-slate-100 px-2.5 text-xs font-bold text-slate-900 truncate">
+                            {formatCurrencyValue(service.originalTotal || service.total || 0, servCurrency)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
 
             <div className="mt-3 flex items-center justify-between gap-3 px-1">
               <p className="text-[11px] font-semibold text-slate-500">Quick Actions</p>
@@ -8656,14 +8800,14 @@ const renderSelectedServicesModal = () => {
             />
           )}
 
-          {(service.pickupTime || service.time) && (
+          {(service.pickupTime || service.time || service.selectedSlot) && (
             <Chip
               icon={
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
                 </svg>
               }
-              value={`Pickup: ${service.pickupTime || service.time}`}
+              value={`${service.type === "transfer" || service.type === "car" ? "Pickup" : "Slot"}: ${service.selectedSlot || service.time || service.pickupTime}`}
               accent="text-amber-800"
               iconColor="text-amber-600"
             />
@@ -9916,10 +10060,10 @@ const Service = ({
   };
 
   const formatServiceDuration = (serv = {}, tourObj = {}) => {
-    let dur = serv.duration || tourObj.duration || "";
+    let dur = serv.duration || tourObj?.duration || "";
     
     if (!dur) {
-      const descText = `${tourObj.description || ""} ${serv.description || ""} ${serv.desc || ""}`;
+      const descText = `${tourObj?.description || ""} ${serv.description || ""} ${serv.desc || ""}`;
       const minMatch = descText.match(/(\d+)\s*(?:mins?|minutes?)/i);
       const hrMatch = descText.match(/(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)/i);
       if (minMatch) {
@@ -9929,11 +10073,22 @@ const Service = ({
       }
     }
 
-    if (!dur) dur = "60";
+    if (!dur) return "";
 
     const num = Number(String(dur).replace(/[^\d.]/g, ""));
     if (!isNaN(num) && num > 0) {
-      return `${num} Mins`;
+      const totalMins = num;
+      const hrs = totalMins / 60;
+      if (hrs >= 1) {
+        if (Number.isInteger(hrs)) {
+          return `${totalMins} Mins (${hrs} ${hrs === 1 ? "Hour" : "Hours"})`;
+        } else {
+          const hPart = Math.floor(hrs);
+          const mPart = totalMins % 60;
+          return `${totalMins} Mins (${hPart}h ${mPart}m)`;
+        }
+      }
+      return `${totalMins} Mins`;
     }
 
     return String(dur);
@@ -10240,41 +10395,85 @@ const Service = ({
             )}
           </div>
 
-          {/* ── BASE RATE ── */}
+          {/* ── BASE RATE OR DURATION ── */}
           <div className="grid grid-cols-1 gap-2 lg:grid-cols-[minmax(0,1.15fr)_minmax(240px,0.85fr)]">
-            <div className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 shadow-2xs">
-              <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-500 mb-1">Base Rate</p>
-              {isEditMode ? (
-                <input
-                  type="number"
-                  min="0"
-                  value={baseRateDisplayValue || ""}
-                  onChange={(event) => updateField(service.id, "rate", roundCurrencyAmount(event.target.value))}
-                  className="mt-1 w-full rounded-lg border border-amber-300 bg-amber-50 px-2 py-1.5 text-[13px] font-bold text-amber-900 outline-none transition-colors focus:border-amber-500"
-                />
-              ) : (
-                <div className="flex items-baseline gap-1.5 flex-wrap">
-                  <p className="text-[13px] font-bold text-amber-700">
-                    {formatCurrencyValue(baseRateDisplayValue || 0, currencyCode)}
-                  </p>
-                  {service.pricingTier && (
-                    <span className="text-[10px] text-slate-500 font-normal">
-                      / {service.pricingTier}
-                    </span>
-                  )}
-                </div>
-              )}
-              {isForeignCurrency && (
-                <>
-                  <p className="text-[10px] text-sky-700 font-semibold mt-0.5">
-                    ₹ {formatAmountValue(baseRateInInr)}
-                  </p>
-                  <div className="mt-2 inline-flex items-center rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1 text-[10px] text-slate-700">
-                    1 {currencyCode} = <span className="ml-1 font-semibold text-sky-800">₹ {formatExchangeRateValue(exchangeRate)}</span>
+            {(service.type === "activity" || service.type === "sightseeing") ? (
+              <div className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 shadow-2xs">
+                <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-500 mb-1 flex items-center gap-1">
+                  <Clock size={11} className="text-purple-600" /> Duration
+                </p>
+                {isEditMode ? (
+                  <input
+                    type="text"
+                    placeholder="e.g. 230 Mins (3h 50m) or 4 Hours"
+                    value={service.duration || ""}
+                    onChange={(event) =>
+                      updateField(
+                        service.id,
+                        "duration",
+                        event.target.value,
+                      )
+                    }
+                    className="mt-1 w-full rounded-lg border border-sky-300 bg-sky-50 px-2.5 py-1.5 text-[12.5px] font-bold text-slate-900 outline-none transition-colors focus:border-sky-500 shadow-2xs"
+                  />
+                ) : (
+                  <div className="flex items-baseline gap-1.5 flex-wrap">
+                    <p className="text-[13px] font-bold text-slate-800 flex items-center gap-1.5">
+                      <Clock size={13} className="text-sky-600 shrink-0" />
+                      {formatServiceDuration(service) || service.duration || "—"}
+                    </p>
                   </div>
-                </>
-              )}
-            </div>
+                )}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 shadow-2xs">
+                <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-500 mb-1">
+                  Base Rate
+                </p>
+                {isEditMode ? (
+                  <input
+                    type="number"
+                    min="0"
+                    value={baseRateDisplayValue || ""}
+                    onChange={(event) =>
+                      updateField(
+                        service.id,
+                        "rate",
+                        roundCurrencyAmount(event.target.value),
+                      )
+                    }
+                    className="mt-1 w-full rounded-lg border border-amber-300 bg-amber-50 px-2 py-1.5 text-[13px] font-bold text-amber-900 outline-none transition-colors focus:border-amber-500"
+                  />
+                ) : (
+                  <div className="flex items-baseline gap-1.5 flex-wrap">
+                    <p className="text-[13px] font-bold text-amber-700">
+                      {formatCurrencyValue(
+                        baseRateDisplayValue || 0,
+                        currencyCode,
+                      )}
+                    </p>
+                    {service.pricingTier && (
+                      <span className="text-[10px] text-slate-500 font-normal">
+                        / {service.pricingTier}
+                      </span>
+                    )}
+                  </div>
+                )}
+                {isForeignCurrency && (
+                  <>
+                    <p className="text-[10px] text-sky-700 font-semibold mt-0.5">
+                      ₹ {formatAmountValue(baseRateInInr)}
+                    </p>
+                    <div className="mt-2 inline-flex items-center rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1 text-[10px] text-slate-700">
+                      1 {currencyCode} ={" "}
+                      <span className="ml-1 font-semibold text-sky-800">
+                        ₹ {formatExchangeRateValue(exchangeRate)}
+                      </span>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
 
             <div className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 shadow-2xs">
               <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-500 mb-2">Service Date</p>
@@ -10598,20 +10797,26 @@ const Service = ({
                   {/* Tour Type Selector */}
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] font-semibold text-slate-500">Tour Type:</span>
-                    <div className="relative">
-                      <select
-                        value={currentTourType}
-                        onChange={(e) => updateField(service.id, "tourType", e.target.value)}
-                        className={`${selectCls.replace('rounded-lg', 'rounded-full')} h-7.5 pl-3 pr-8 text-[11px] font-semibold appearance-none bg-white border border-gray-300 text-slate-900 hover:border-[#3E63DD] cursor-pointer shadow-2xs`}
-                      >
-                        {tourTypesList.map((t, idx) => (
-                          <option key={t._id || idx} value={t.tourType} className="bg-white text-slate-900 font-medium">
-                            {t.tourType}
-                          </option>
-                        ))}
-                      </select>
-                      <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500" />
-                    </div>
+                    {isEditMode ? (
+                      <div className="relative">
+                        <select
+                          value={currentTourType}
+                          onChange={(e) => updateField(service.id, "tourType", e.target.value)}
+                          className={`${selectCls.replace('rounded-lg', 'rounded-full')} h-7.5 pl-3 pr-8 text-[11px] font-semibold appearance-none bg-white border border-gray-300 text-slate-900 hover:border-[#3E63DD] cursor-pointer shadow-2xs`}
+                        >
+                          {tourTypesList.map((t, idx) => (
+                            <option key={t._id || idx} value={t.tourType} className="bg-white text-slate-900 font-medium">
+                              {t.tourType}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500" />
+                      </div>
+                    ) : (
+                      <span className="text-[11px] font-semibold text-slate-800 bg-slate-100 border border-gray-200 px-3 py-1 rounded-full shadow-2xs">
+                        {currentTourType}
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -10745,53 +10950,90 @@ const Service = ({
                   {/* 3. Adults */}
                   <div>
                     <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Adults</p>
-                    <input
-                      type="number"
-                      min={1}
-                      value={service.adults !== undefined ? service.adults : (service.pax || 1)}
-                      onChange={(e) => {
-                        const num = Math.max(1, Number(e.target.value) || 1);
-                        updateField(service.id, "adults", num);
-                        updateField(service.id, "pax", num + Number(service.children || 0));
-                      }}
-                      className={`${inputCls} h-8 text-[11px] font-bold w-full`}
-                    />
+                    {isEditMode ? (
+                      <input
+                        type="number"
+                        min={1}
+                        value={service.adults !== undefined ? service.adults : (service.pax || 1)}
+                        onChange={(e) => {
+                          const num = Math.max(1, Number(e.target.value) || 1);
+                          updateField(service.id, "adults", num);
+                          updateField(service.id, "pax", num + Number(service.children || 0));
+                        }}
+                        className={`${inputCls} h-8 text-[11px] font-bold w-full`}
+                      />
+                    ) : (
+                      <div className="flex h-8 w-full items-center rounded-lg border border-gray-200 bg-slate-50 px-2.5 text-[11px] font-bold text-slate-900">
+                        {service.adults !== undefined ? service.adults : (service.pax || 1)}
+                      </div>
+                    )}
                   </div>
 
                   {/* 4. Children */}
                   <div>
                     <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Children</p>
-                    <input
-                      type="number"
-                      min={0}
-                      value={service.children !== undefined ? service.children : 0}
-                      onChange={(e) => {
-                        const num = Math.max(0, Number(e.target.value) || 0);
-                        updateField(service.id, "children", num);
-                        updateField(service.id, "pax", Number(service.adults || service.pax || 1) + num);
-                      }}
-                      className={`${inputCls} h-8 text-[11px] font-bold w-full`}
-                    />
+                    {isEditMode ? (
+                      <input
+                        type="number"
+                        min={0}
+                        value={service.children !== undefined ? service.children : 0}
+                        onChange={(e) => {
+                          const num = Math.max(0, Number(e.target.value) || 0);
+                          updateField(service.id, "children", num);
+                          updateField(service.id, "pax", Number(service.adults || service.pax || 1) + num);
+                        }}
+                        className={`${inputCls} h-8 text-[11px] font-bold w-full`}
+                      />
+                    ) : (
+                      <div className="flex h-8 w-full items-center rounded-lg border border-gray-200 bg-slate-50 px-2.5 text-[11px] font-bold text-slate-900">
+                        {service.children !== undefined ? service.children : 0}
+                      </div>
+                    )}
                   </div>
 
                   {/* 5. Slot / Time */}
                   <div>
                     <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Slot / Time</p>
-                    <div className="relative">
-                      <select
-                        value={service.selectedSlot || availableSlots[0] || "08:00"}
-                        onChange={(e) => updateField(service.id, "selectedSlot", e.target.value)}
-                        className={`${selectCls.replace('rounded-lg', 'rounded-md')} h-8 text-[11px] font-semibold w-full pl-2 pr-6 appearance-none bg-white border border-gray-300 text-slate-900 cursor-pointer focus:border-[#3E63DD]`}
-                      >
-                        <option value="" disabled>Select Time</option>
-                        {availableSlots.map((slot, sIdx) => (
-                          <option key={sIdx} value={slot} className="bg-white text-slate-900 font-medium">
-                            {slot}
-                          </option>
-                        ))}
-                      </select>
-                      <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500" />
-                    </div>
+                    {isEditMode ? (
+                      <div className="relative flex items-center">
+                        <input
+                          type="text"
+                          value={service.selectedSlot !== undefined ? service.selectedSlot : (service.time || "08:00")}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            updateField(service.id, "selectedSlot", val);
+                            updateField(service.id, "time", val);
+                          }}
+                          placeholder="08:00"
+                          className={`${inputCls} h-8 text-[11px] font-normal text-slate-800 w-full pr-7`}
+                        />
+                        <div className="absolute right-0 top-0 bottom-0 w-7 flex items-center justify-center">
+                          <select
+                            value=""
+                            onChange={(e) => {
+                              if (e.target.value) {
+                                updateField(service.id, "selectedSlot", e.target.value);
+                                updateField(service.id, "time", e.target.value);
+                              }
+                            }}
+                            title="Choose time slot"
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer text-xs font-normal bg-white"
+                          >
+                            <option value="" disabled>Select Time</option>
+                            {availableSlots.map((slot, sIdx) => (
+                              <option key={sIdx} value={slot} className="bg-white text-slate-900 font-normal">
+                                {slot}
+                              </option>
+                            ))}
+                          </select>
+                          <ChevronDown size={12} className="text-slate-500 pointer-events-none" />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex h-8 w-full items-center rounded-lg border border-gray-200 bg-slate-50 px-2.5 text-[11px] font-medium text-slate-800">
+                        {service.selectedSlot !== undefined ? service.selectedSlot : (service.time || "08:00")}
+                      </div>
+                    )}
                   </div>
 
                   {/* 6. Total (Calculated) */}
@@ -10833,20 +11075,26 @@ const Service = ({
                   {/* Tour Type Selector */}
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] font-semibold text-slate-500">Tour Type:</span>
-                    <div className="relative">
-                      <select
-                        value={currentTourType}
-                        onChange={(e) => updateField(service.id, "tourType", e.target.value)}
-                        className={`${selectCls.replace('rounded-lg', 'rounded-full')} h-7.5 pl-3 pr-8 text-[11px] font-semibold appearance-none bg-white border border-gray-300 text-slate-900 hover:border-[#3E63DD] cursor-pointer shadow-2xs`}
-                      >
-                        {tourTypesList.map((t, idx) => (
-                          <option key={t._id || idx} value={t.tourType} className="bg-white text-slate-900 font-medium">
-                            {t.tourType}
-                          </option>
-                        ))}
-                      </select>
-                      <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500" />
-                    </div>
+                    {isEditMode ? (
+                      <div className="relative">
+                        <select
+                          value={currentTourType}
+                          onChange={(e) => updateField(service.id, "tourType", e.target.value)}
+                          className={`${selectCls.replace('rounded-lg', 'rounded-full')} h-7.5 pl-3 pr-8 text-[11px] font-semibold appearance-none bg-white border border-gray-300 text-slate-900 hover:border-[#3E63DD] cursor-pointer shadow-2xs`}
+                        >
+                          {tourTypesList.map((t, idx) => (
+                            <option key={t._id || idx} value={t.tourType} className="bg-white text-slate-900 font-medium">
+                              {t.tourType}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500" />
+                      </div>
+                    ) : (
+                      <span className="text-[11px] font-semibold text-slate-800 bg-slate-100 border border-gray-200 px-3 py-1 rounded-full shadow-2xs">
+                        {currentTourType}
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -10921,53 +11169,90 @@ const Service = ({
                   {/* 3. Adults */}
                   <div>
                     <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Adults</p>
-                    <input
-                      type="number"
-                      min={1}
-                      value={service.adults !== undefined ? service.adults : (service.pax || 1)}
-                      onChange={(e) => {
-                        const num = Math.max(1, Number(e.target.value) || 1);
-                        updateField(service.id, "adults", num);
-                        updateField(service.id, "pax", num + Number(service.children || 0));
-                      }}
-                      className={`${inputCls} h-8 text-[11px] font-bold w-full`}
-                    />
+                    {isEditMode ? (
+                      <input
+                        type="number"
+                        min={1}
+                        value={service.adults !== undefined ? service.adults : (service.pax || 1)}
+                        onChange={(e) => {
+                          const num = Math.max(1, Number(e.target.value) || 1);
+                          updateField(service.id, "adults", num);
+                          updateField(service.id, "pax", num + Number(service.children || 0));
+                        }}
+                        className={`${inputCls} h-8 text-[11px] font-bold w-full`}
+                      />
+                    ) : (
+                      <div className="flex h-8 w-full items-center rounded-lg border border-gray-200 bg-slate-50 px-2.5 text-[11px] font-bold text-slate-900">
+                        {service.adults !== undefined ? service.adults : (service.pax || 1)}
+                      </div>
+                    )}
                   </div>
 
                   {/* 4. Children */}
                   <div>
                     <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Children</p>
-                    <input
-                      type="number"
-                      min={0}
-                      value={service.children !== undefined ? service.children : 0}
-                      onChange={(e) => {
-                        const num = Math.max(0, Number(e.target.value) || 0);
-                        updateField(service.id, "children", num);
-                        updateField(service.id, "pax", Number(service.adults || service.pax || 1) + num);
-                      }}
-                      className={`${inputCls} h-8 text-[11px] font-bold w-full`}
-                    />
+                    {isEditMode ? (
+                      <input
+                        type="number"
+                        min={0}
+                        value={service.children !== undefined ? service.children : 0}
+                        onChange={(e) => {
+                          const num = Math.max(0, Number(e.target.value) || 0);
+                          updateField(service.id, "children", num);
+                          updateField(service.id, "pax", Number(service.adults || service.pax || 1) + num);
+                        }}
+                        className={`${inputCls} h-8 text-[11px] font-bold w-full`}
+                      />
+                    ) : (
+                      <div className="flex h-8 w-full items-center rounded-lg border border-gray-200 bg-slate-50 px-2.5 text-[11px] font-bold text-slate-900">
+                        {service.children !== undefined ? service.children : 0}
+                      </div>
+                    )}
                   </div>
 
                   {/* 5. Slot / Time */}
                   <div>
                     <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Slot / Time</p>
-                    <div className="relative">
-                      <select
-                        value={service.selectedSlot || availableSlots[0] || "08:00"}
-                        onChange={(e) => updateField(service.id, "selectedSlot", e.target.value)}
-                        className={`${selectCls.replace('rounded-lg', 'rounded-md')} h-8 text-[11px] font-semibold w-full pl-2 pr-6 appearance-none bg-white border border-gray-300 text-slate-900 cursor-pointer focus:border-[#3E63DD]`}
-                      >
-                        <option value="" disabled>Select Time</option>
-                        {availableSlots.map((slot, sIdx) => (
-                          <option key={sIdx} value={slot} className="bg-white text-slate-900 font-medium">
-                            {slot}
-                          </option>
-                        ))}
-                      </select>
-                      <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500" />
-                    </div>
+                    {isEditMode ? (
+                      <div className="relative flex items-center">
+                        <input
+                          type="text"
+                          value={service.selectedSlot !== undefined ? service.selectedSlot : (service.time || "08:00")}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            updateField(service.id, "selectedSlot", val);
+                            updateField(service.id, "time", val);
+                          }}
+                          placeholder="08:00"
+                          className={`${inputCls} h-8 text-[11px] font-normal text-slate-800 w-full pr-7`}
+                        />
+                        <div className="absolute right-0 top-0 bottom-0 w-7 flex items-center justify-center">
+                          <select
+                            value=""
+                            onChange={(e) => {
+                              if (e.target.value) {
+                                updateField(service.id, "selectedSlot", e.target.value);
+                                updateField(service.id, "time", e.target.value);
+                              }
+                            }}
+                            title="Choose time slot"
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer text-xs font-normal bg-white"
+                          >
+                            <option value="" disabled>Select Time</option>
+                            {availableSlots.map((slot, sIdx) => (
+                              <option key={sIdx} value={slot} className="bg-white text-slate-900 font-normal">
+                                {slot}
+                              </option>
+                            ))}
+                          </select>
+                          <ChevronDown size={12} className="text-slate-500 pointer-events-none" />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex h-8 w-full items-center rounded-lg border border-gray-200 bg-slate-50 px-2.5 text-[11px] font-medium text-slate-800">
+                        {service.selectedSlot !== undefined ? service.selectedSlot : (service.time || "08:00")}
+                      </div>
+                    )}
                   </div>
 
                   {/* 6. Total (Calculated) */}
@@ -11105,36 +11390,80 @@ const Service = ({
                     <label className="mb-1 block text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                       Room Category
                     </label>
-                    <select
-                      value={service.roomType || ""}
-                      onChange={(e) => updateField(service.id, "roomType", e.target.value)}
-                      className={`${selectCls} w-full`}
-                    >
-                      <option value="">Select room category</option>
-                      {hotelVariantOptions.roomTypes.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="relative flex items-center w-full">
+                      <input
+                        type="text"
+                        value={service.roomType || ""}
+                        onChange={(e) => updateField(service.id, "roomType", e.target.value)}
+                        placeholder="Select room category"
+                        className={`${selectCls} w-full pr-7 font-semibold`}
+                      />
+                      <div className="absolute right-0 top-0 bottom-0 w-7 flex items-center justify-center">
+                        <select
+                          value=""
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              updateField(service.id, "roomType", e.target.value);
+                            }
+                          }}
+                          title="Choose room category"
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer text-xs font-normal bg-white"
+                        >
+                          <option value="" disabled>
+                            Select room category
+                          </option>
+                          {hotelVariantOptions.roomTypes.map((option) => (
+                            <option key={option.value} value={option.value} className="bg-white text-slate-900 font-normal">
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown
+                          size={13}
+                          className="text-slate-500 pointer-events-none"
+                        />
+                      </div>
+                    </div>
                   </div>
 
                   <div>
                     <label className="mb-1 block text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                       Room Type (Occupancy)
                     </label>
-                    <select
-                      value={service.roomCategory || ""}
-                      onChange={(e) => updateField(service.id, "roomCategory", e.target.value)}
-                      className={`${selectCls} w-full`}
-                    >
-                      <option value="">Select room type</option>
-                      {hotelVariantOptions.roomCategories.map((option) => (
-                        <option key={option} value={option}>
-                          {formatRoomOccupancyLabel(option)}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="relative flex items-center w-full">
+                      <input
+                        type="text"
+                        value={service.roomCategory || ""}
+                        onChange={(e) => updateField(service.id, "roomCategory", e.target.value)}
+                        placeholder="Select room type"
+                        className={`${selectCls} w-full pr-7 font-semibold`}
+                      />
+                      <div className="absolute right-0 top-0 bottom-0 w-7 flex items-center justify-center">
+                        <select
+                          value=""
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              updateField(service.id, "roomCategory", e.target.value);
+                            }
+                          }}
+                          title="Choose room occupancy"
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer text-xs font-normal bg-white"
+                        >
+                          <option value="" disabled>
+                            Select room type
+                          </option>
+                          {hotelVariantOptions.roomCategories.map((option) => (
+                            <option key={option} value={option} className="bg-white text-slate-900 font-normal">
+                              {formatRoomOccupancyLabel(option)}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown
+                          size={13}
+                          className="text-slate-500 pointer-events-none"
+                        />
+                      </div>
+                    </div>
                   </div>
 
                   <div>

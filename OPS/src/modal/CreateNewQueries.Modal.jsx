@@ -855,27 +855,28 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
       <AnimatePresence mode="wait">
         {isModalVisible && (
           <motion.div
+            key="create-query-modal-overlay"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.25, ease: "easeOut" }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
             className="fixed inset-0 z-50 flex items-center justify-center px-3 py-4 sm:px-4 sm:py-6"
           >
             <motion.div
               onClick={() => closeModal()}
-              initial={{ opacity: 0, backdropFilter: "blur(0px)", WebkitBackdropFilter: "blur(0px)" }}
-              animate={{ opacity: 1, backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)" }}
-              exit={{ opacity: 0, backdropFilter: "blur(0px)", WebkitBackdropFilter: "blur(0px)" }}
-              transition={{ duration: 0.25, ease: "easeOut" }}
-              className="absolute inset-0 bg-black/30"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
             />
 
             <motion.section
               onClick={(e) => e.stopPropagation()}
-              initial={{ opacity: 0, scale: 0.97, y: 26 }}
+              initial={{ opacity: 0, scale: 0.97, y: 16 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.985, y: 18 }}
-              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+              exit={{ opacity: 0, scale: 0.97, y: 14 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
               className={`relative z-10 flex max-h-[calc(100vh-20px)] w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-b from-white to-slate-50/95 p-4 shadow-2xl sm:max-h-[calc(100vh-32px)] sm:p-4.5 ${isOpsView ? 'max-w-[460px]' : 'max-w-[520px]'}`}
             >
             <div className="relative -mx-4 -mt-4 mb-4 bg-[linear-gradient(135deg,#051329_0%,#0e234e_55%,#3E63DD_100%)] px-5 py-4 text-white sm:-mx-5 sm:-mt-5 sm:mb-5 shadow-md">

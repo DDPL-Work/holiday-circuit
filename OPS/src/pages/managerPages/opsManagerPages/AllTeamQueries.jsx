@@ -161,18 +161,23 @@ function DetailModal({ query, onClose }) {
 
   return (
     <motion.div
+      key="detail-modal-overlay"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-5 bg-slate-900/40 backdrop-blur-xs"
-      onClick={onClose}
+      transition={{ duration: 0.2, ease: "easeOut" }}
+      className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-5"
     >
+      <div
+        className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm"
+        onClick={onClose}
+      />
       <motion.div
-        initial={{ scale: 0.97, opacity: 0, y: 12 }}
+        initial={{ scale: 0.97, opacity: 0, y: 10 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
-        exit={{ scale: 0.97, opacity: 0, y: 12 }}
-        transition={{ duration: 0.18, ease: "easeOut" }}
-        className="relative w-full max-w-[1140px] bg-white rounded-xl shadow-2xl border border-slate-200 p-4 sm:p-5 flex flex-col max-h-[92vh]"
+        exit={{ scale: 0.97, opacity: 0, y: 10 }}
+        transition={{ duration: 0.2, ease: "easeOut" }}
+        className="relative z-10 w-full max-w-[1140px] bg-white rounded-xl shadow-2xl border border-slate-200 p-4 sm:p-5 flex flex-col max-h-[92vh]"
         onClick={(event) => event.stopPropagation()}
       >
         {/* Modal Header */}
@@ -342,17 +347,17 @@ function DetailModal({ query, onClose }) {
                       >
                         Edit
                       </button>
-                      <button
+                      {/* <button
                         type="button"
                         onClick={() => toast("Preview action coming soon")}
                         className="px-2.5 py-1 rounded-md text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 transition cursor-pointer"
                       >
                         Preview
-                      </button>
+                      </button> */}
                     </div>
                   </div>
                 </motion.div>
-              ))}
+              ))}-
             </div>
           </div>
         )}
@@ -941,9 +946,16 @@ export default function AllTeamQueries() {
       </div>
 
       <AnimatePresence>
-        {selected && <DetailModal query={selected} onClose={() => setSelected(null)} />}
+        {selected && (
+          <DetailModal
+            key={selected?.queryObjectId || selected?.id || "detail-modal"}
+            query={selected}
+            onClose={() => setSelected(null)}
+          />
+        )}
         {openEditModal && (
           <CreateNewQueries
+            key="edit-query-modal"
             queryToEdit={selectedQueryToEdit}
             isOpsView={true}
             onCreated={() => {

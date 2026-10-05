@@ -4897,10 +4897,10 @@ const QuotationBuilder = () => {
                       />
                     )}
 
-                  {(service.pickupTime || service.time) && (
+                  {(service.pickupTime || service.time || service.selectedSlot) && (
                     <Chip
                       icon={<Clock size={10} />}
-                      value={`Pickup: ${service.pickupTime || service.time}`}
+                      value={`${service.type === "transfer" || service.type === "car" ? "Pickup" : "Slot"}: ${service.selectedSlot || service.time || service.pickupTime}`}
                       accent="text-yellow-200"
                       iconColor="text-yellow-400"
                     />

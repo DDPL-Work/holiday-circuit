@@ -237,7 +237,7 @@ export const TransportsTab = ({
                   </div>
 
                   {activeTransferDropdownIdx === index && (
-                    <div className="absolute left-0 right-0 top-full mt-1.5 max-h-64 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-xl z-[100] divide-y divide-gray-100 [scrollbar-width:thin]">
+                    <div className="absolute left-0 w-[420px] sm:w-[500px] md:w-[580px] max-w-[calc(90vw-30px)] top-full mt-1.5 max-h-72 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-2xl z-[100] divide-y divide-gray-100 [scrollbar-width:thin]">
                       {filteredTransfers.length === 0 ? (
                         <div className="p-3 text-[11px] text-gray-500 italic text-center">
                           No route found matching "{transfer.name}". You can freely type custom transfer route.
@@ -337,10 +337,11 @@ export const TransportsTab = ({
                 <div className="sm:col-span-2">
                   <label className="block text-[11px] font-semibold text-slate-600 mb-1">Usage</label>
                   <select
-                    value={transfer.usage || "one-way-airport-transfer"}
+                    value={transfer.usage || ""}
                     onChange={(e) => handleUsageChange(index, e.target.value)}
                     className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
                   >
+                    <option value="">Select Usage</option>
                     {TRANSPORT_USAGE_OPTIONS.map((opt) => {
                       const optPrice = transfer.usagePrices && transfer.usagePrices[opt.value] !== undefined
                         ? Number(transfer.usagePrices[opt.value])

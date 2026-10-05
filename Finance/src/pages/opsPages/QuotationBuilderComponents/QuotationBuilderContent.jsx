@@ -873,7 +873,7 @@ const QuotationBuilderContent = (props) => {
                                 />
                               )}
 
-                            {(service.pickupTime || service.time) && (
+                            {(service.pickupTime || service.time || service.selectedSlot) && (
                               <Chip
                                 icon={
                                   <svg
@@ -890,7 +890,7 @@ const QuotationBuilderContent = (props) => {
                                     <polyline points="12 6 12 12 16 14" />
                                   </svg>
                                 }
-                                value={`Pickup: ${service.pickupTime || service.time}`}
+                                value={`${service.type === "transfer" || service.type === "car" ? "Pickup" : "Slot"}: ${service.selectedSlot || service.time || service.pickupTime}`}
                                 accent="text-amber-800"
                                 iconColor="text-amber-600"
                               />
